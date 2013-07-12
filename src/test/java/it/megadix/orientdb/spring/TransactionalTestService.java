@@ -1,9 +1,11 @@
 package it.megadix.orientdb.spring;
 
-import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertNotNull;
+import static junit.framework.Assert.assertTrue;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CyclicBarrier;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,8 @@ import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 @Service
 public class TransactionalTestService extends OrientDbDaoSupport {
 
+    private static final String THREAD_A = "Thread A";
+    private static final String THREAD_B = "Thread B";
     PlatformTransactionManager transactionManager;
     TransactionTemplate template;
 
@@ -35,14 +39,14 @@ public class TransactionalTestService extends OrientDbDaoSupport {
             @Override
             public Object doInTransaction(TransactionStatus status) {
                 try {
-                    assertEquals(0, countDocuments());
+                    assertTrue(!checkForName(THREAD_A) && !checkForName(THREAD_B));
                     // insert one document
-                    assertNotNull(insertDocument("Thread A"));
-                    assertEquals(1, countDocuments());
+                    assertNotNull(insertDocument(THREAD_A));
+                    assertTrue(1 == countDocuments() && checkForName(THREAD_A));
                     // wait at barrier while thread B inserts another document
                     barrier.await();
                     // count must be == 1, because transactions must be isolated
-                    assertEquals(1, countDocuments());
+                    assertTrue(1 == countDocuments() && checkForName(THREAD_A));
 
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -62,13 +66,14 @@ public class TransactionalTestService extends OrientDbDaoSupport {
             public Object doInTransaction(TransactionStatus status) {
                 try {
                     // wait at barrier while thread A inserts a document
+                    assertTrue(!checkForName(THREAD_A) && !checkForName(THREAD_B));
                     barrier.await();
                     // count must be == 1, because transactions must be isolated
-                    assertEquals(1, countDocuments());
+                    assertTrue(1 == countDocuments() && checkForName(THREAD_A));
                     // insert one document
-                    assertNotNull(insertDocument("Thread B"));
+                    assertNotNull(insertDocument(THREAD_B));
                     // count must be == 2, because transactions must be isolated
-                    assertEquals(2, countDocuments());
+                    assertTrue(2 == countDocuments() && checkForName(THREAD_A) && checkForName(THREAD_B));
 
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -96,6 +101,22 @@ public class TransactionalTestService extends OrientDbDaoSupport {
         long count = getOrientDbTemplate().execute(action);
 
         return count;
+    }
+
+    private Boolean checkForName(final String name) {
+        OrientDbCallback<Boolean> action = new OrientDbCallback<Boolean>() {
+            @Override
+            public Boolean doInOrientDb(ODatabaseRecord database) {
+                OSQLSynchQuery<ODocument> query = new OSQLSynchQuery<ODocument>(
+                        "select from TransactionalTest_1 where name like '" + name + "'");
+                Map<String, Object> params = new HashMap<String, Object>();
+                params.put("name", name);
+                List<ODocument> result = database.command(query).execute();
+                return 1 == result.size();
+            }
+        };
+
+        return getOrientDbTemplate().execute(action);
     }
 
     private ODocument insertDocument(final String name) {
