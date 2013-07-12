@@ -63,12 +63,12 @@ public class TransactionalTestService extends OrientDbDaoSupport {
                 try {
                     // wait at barrier while thread A inserts a document
                     barrier.await();
-                    // count must be == 0, because transactions must be isolated
-                    assertEquals(0, countDocuments());
-                    // insert one document
-                    assertNotNull(insertDocument("Thread B"));
                     // count must be == 1, because transactions must be isolated
                     assertEquals(1, countDocuments());
+                    // insert one document
+                    assertNotNull(insertDocument("Thread B"));
+                    // count must be == 2, because transactions must be isolated
+                    assertEquals(2, countDocuments());
 
                 } catch (Exception e) {
                     throw new RuntimeException(e);
